@@ -183,7 +183,7 @@
              */
             async function generateAndDisplayMeme(prompt) {
                  try {
-                    const generatedImageUrl = await generateImageWithRetry(prompt);
+                    const generatedImageUrl = await generateImageFromServer(prompt);
                     if (generatedImageUrl) {
                         generatedMemeImg.src = generatedImageUrl;
                         showResults();
@@ -201,45 +201,33 @@
             }
 
             /**
-             * Generates an image using the Imagen 3 model with exponential backoff.
+             * Calls our own back-end serverless function to securely generate an image.
              * @param {string} prompt - The prompt for the image generation.
              * @returns {Promise<string|null>} The base64 data URL of the image, or null if it fails.
              */
-            async function generateImageWithRetry(prompt, retries = 3, delay = 1000) {
-                const apiKey = ""; // API key will be provided by the environment
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`;
-                const payload = {
-                    instances: [{ prompt: prompt }],
-                    parameters: { "sampleCount": 1 }
-                };
+            async function generateImageFromServer(prompt) {
+                // This is the new endpoint for our own serverless function.
+                const apiUrl = '/api/generate-meme';
 
-                for (let i = 0; i < retries; i++) {
-                    try {
-                        const response = await fetch(apiUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
-                        });
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ prompt: prompt }),
+                });
 
-                        if (!response.ok) {
-                            throw new Error(`API request failed with status ${response.status}`);
-                        }
-
-                        const result = await response.json();
-                        if (result.predictions && result.predictions.length > 0 && result.predictions[0].bytesBase64Encoded) {
-                            return `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}`;
-                        } else {
-                            throw new Error("Invalid response structure from API.");
-                        }
-                    } catch (error) {
-                        console.error(`Attempt ${i + 1} failed:`, error);
-                        if (i === retries - 1) {
-                           throw error; // Rethrow the last error
-                        }
-                        await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
-                    }
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
                 }
-                return null;
+
+                const result = await response.json();
+                
+                if (result.error) {
+                    throw new Error(result.error);
+                }
+
+                return result.imageUrl;
             }
             
             // --- UI Helper Functions ---
